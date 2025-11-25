@@ -3,33 +3,32 @@
  */
 
 const LEVELS = [
-    { level: 1, gridSize: 6, colors: 3, target: 1000, moves: 15 },
-    { level: 2, gridSize: 6, colors: 4, target: 1500, moves: 18 },
-    { level: 3, gridSize: 7, colors: 4, target: 2000, moves: 20 },
-    { level: 4, gridSize: 7, colors: 5, target: 2500, moves: 22 },
-    { level: 5, gridSize: 8, colors: 5, target: 3000, moves: 25 },
-    { level: 6, gridSize: 8, colors: 6, target: 4000, moves: 25 },
-    { level: 7, gridSize: 8, colors: 6, target: 5000, moves: 20 }, // Harder (less moves)
-    { level: 8, gridSize: 9, colors: 6, target: 6000, moves: 30 },
-    { level: 9, gridSize: 9, colors: 7, target: 7500, moves: 35 },
-    { level: 10, gridSize: 10, colors: 7, target: 10000, moves: 40 }
+    { level: 1, gridSize: 6, colors: 3, target: 1000 },
+    { level: 2, gridSize: 6, colors: 4, target: 1500 },
+    { level: 3, gridSize: 7, colors: 4, target: 2000 },
+    { level: 4, gridSize: 7, colors: 5, target: 2500 },
+    { level: 5, gridSize: 8, colors: 5, target: 3000 },
+    { level: 6, gridSize: 8, colors: 6, target: 4000 },
+    { level: 7, gridSize: 8, colors: 6, target: 5000 },
+    { level: 8, gridSize: 9, colors: 6, target: 6000 },
+    { level: 9, gridSize: 9, colors: 7, target: 7500 },
+    { level: 10, gridSize: 10, colors: 7, target: 10000 }
 ];
 
 class Game {
     constructor() {
         this.currentLevelIndex = 0;
         this.score = 0;
-        this.moves = 0;
         this.grid = [];
         this.selectedTile = null;
         this.isAnimating = false;
+        this.combo = 0;
 
         // DOM Elements
         this.gridEl = document.getElementById('grid');
         this.levelEl = document.getElementById('level-value');
         this.scoreEl = document.getElementById('score-value');
         this.targetEl = document.getElementById('target-value');
-        this.movesEl = document.getElementById('moves-value');
 
         // Screens
         this.startScreen = document.getElementById('start-screen');
@@ -110,8 +109,8 @@ class Game {
         this.levelConfig = LEVELS[levelIndex];
 
         // Reset state for level
-        this.moves = this.levelConfig.moves;
         this.levelScore = 0;
+        this.combo = 0;
 
         this.updateHUD();
         this.generateGrid();
@@ -122,7 +121,6 @@ class Game {
         this.levelEl.textContent = this.levelConfig.level;
         this.scoreEl.textContent = this.levelScore;
         this.targetEl.textContent = this.levelConfig.target;
-        this.movesEl.textContent = this.moves;
     }
 
     generateGrid() {
@@ -370,7 +368,7 @@ class Game {
         const matches = this.findMatches();
 
         if (matches.length > 0) {
-            this.moves--;
+            this.combo = 0; // Reset combo on new move
             this.updateHUD();
             await this.processMatches(matches);
         } else {
@@ -440,11 +438,23 @@ class Game {
     }
 
     async processMatches(matches) {
-        // Calculate Score
-        const points = matches.length * 10 + (matches.length > 3 ? (matches.length - 3) * 20 : 0);
+        // Calculate Score with Combo
+        // Base points: 10 per tile. Bonus for >3.
+        // Combo multiplier: 1 + (combo * 0.5)
+        // e.g. Combo 0: x1.0, Combo 1: x1.5, Combo 2: x2.0
+
+        const basePoints = matches.length * 10 + (matches.length > 3 ? (matches.length - 3) * 20 : 0);
+        const multiplier = 1 + (this.combo * 0.5);
+        const points = Math.floor(basePoints * multiplier);
+
         this.levelScore += points;
         this.score += points; // Total score
         this.updateHUD();
+
+        // Show Combo Text if combo > 0
+        if (this.combo > 0) {
+            this.showComboText(this.combo, multiplier);
+        }
 
         // Animate removal
         matches.forEach(tile => {
@@ -461,6 +471,20 @@ class Game {
         });
 
         await this.collapseGrid();
+    }
+
+    showComboText(combo, multiplier) {
+        const el = document.createElement('div');
+        el.className = 'combo-popup';
+        el.innerHTML = `<span>COMBO</span><br>x${multiplier}`;
+        document.body.appendChild(el);
+
+        // Center of screen or near grid
+        const rect = this.gridEl.getBoundingClientRect();
+        el.style.left = (rect.left + rect.width / 2) + 'px';
+        el.style.top = (rect.top + rect.height / 2) + 'px';
+
+        setTimeout(() => el.remove(), 1000);
     }
 
     createParticles(element) {
@@ -595,6 +619,7 @@ class Game {
         // Check for cascading matches
         const newMatches = this.findMatches();
         if (newMatches.length > 0) {
+            this.combo++; // Increment combo for cascade
             await this.processMatches(newMatches);
         } else {
             this.checkLevelStatus();
@@ -612,11 +637,120 @@ class Game {
                 document.getElementById('level-score').textContent = this.levelScore;
                 this.showScreen(this.levelCompleteScreen);
             }, 500);
-        } else if (this.moves <= 0) {
-            setTimeout(() => {
-                this.showScreen(this.gameOverScreen);
-            }, 500);
+        } else {
+            // Check for Deadlock (No moves possible)
+            if (!this.hasPossibleMoves()) {
+                setTimeout(() => {
+                    this.showScreen(this.gameOverScreen);
+                }, 500);
+            }
         }
+    }
+
+    hasPossibleMoves() {
+        // Iterate through all tiles and check if swapping with right or bottom neighbor creates a match
+        const size = this.levelConfig.gridSize;
+
+        // Helper to check match at specific position
+        const checkMatch = (r, c, type) => {
+            // Horizontal
+            if (c >= 2 && this.grid[r][c - 1]?.type === type && this.grid[r][c - 2]?.type === type) return true;
+            if (c >= 1 && c < size - 1 && this.grid[r][c - 1]?.type === type && this.grid[r][c + 1]?.type === type) return true;
+            if (c < size - 2 && this.grid[r][c + 1]?.type === type && this.grid[r][c + 2]?.type === type) return true;
+
+            // Vertical
+            if (r >= 2 && this.grid[r - 1][c]?.type === type && this.grid[r - 2][c]?.type === type) return true;
+            if (r >= 1 && r < size - 1 && this.grid[r - 1][c]?.type === type && this.grid[r + 1][c]?.type === type) return true;
+            if (r < size - 2 && this.grid[r + 1][c]?.type === type && this.grid[r + 2][c]?.type === type) return true;
+
+            return false;
+        };
+
+        // We actually need to simulate the swap and check the whole board or just the affected area.
+        // Simpler approach: For every tile, swap with neighbor, check for matches, swap back.
+
+        for (let r = 0; r < size; r++) {
+            for (let c = 0; c < size; c++) {
+                const current = this.grid[r][c];
+                if (!current) continue;
+
+                // Check Right Swap
+                if (c < size - 1) {
+                    const right = this.grid[r][c + 1];
+                    if (right) {
+                        // Swap types virtually
+                        const t1 = current.type;
+                        const t2 = right.type;
+
+                        // Check if this swap creates a match for either position
+                        // We need to be careful not to modify the actual grid state or use a clone
+                        // Let's just check the logic:
+                        // If we put t2 at [r,c], does it match?
+                        // If we put t1 at [r,c+1], does it match?
+
+                        // Temporarily modify grid for check (safest way to reuse logic if we had a pure function, but we don't)
+                        // Let's write a targeted check.
+
+                        // 1. Check match for 'right' tile moved to 'current' pos
+                        if (this.checkVirtualMatch(r, c, t2, r, c + 1)) return true;
+                        // 2. Check match for 'current' tile moved to 'right' pos
+                        if (this.checkVirtualMatch(r, c + 1, t1, r, c)) return true;
+                    }
+                }
+
+                // Check Bottom Swap
+                if (r < size - 1) {
+                    const bottom = this.grid[r + 1][c];
+                    if (bottom) {
+                        const t1 = current.type;
+                        const t2 = bottom.type;
+
+                        if (this.checkVirtualMatch(r, c, t2, r + 1, c)) return true;
+                        if (this.checkVirtualMatch(r + 1, c, t1, r, c)) return true;
+                    }
+                }
+            }
+        }
+
+        console.log("DEADLOCK DETECTED");
+        return false;
+    }
+
+    checkVirtualMatch(r, c, type, ignoreR, ignoreC) {
+        // Check if placing 'type' at [r,c] creates a match
+        // We must ignore the tile currently at [ignoreR, ignoreC] (the one we swapped with)
+        // because it's effectively moving away.
+
+        const size = this.levelConfig.gridSize;
+        const get = (row, col) => {
+            if (row === r && col === c) return { type }; // The virtual tile
+            if (row === ignoreR && col === ignoreC) return { type: -1 }; // The empty spot (swapped away)
+            return this.grid[row][col];
+        };
+
+        // Horizontal
+        if (c >= 2) {
+            if (get(r, c - 1)?.type === type && get(r, c - 2)?.type === type) return true;
+        }
+        if (c >= 1 && c < size - 1) {
+            if (get(r, c - 1)?.type === type && get(r, c + 1)?.type === type) return true;
+        }
+        if (c < size - 2) {
+            if (get(r, c + 1)?.type === type && get(r, c + 2)?.type === type) return true;
+        }
+
+        // Vertical
+        if (r >= 2) {
+            if (get(r - 1, c)?.type === type && get(r - 2, c)?.type === type) return true;
+        }
+        if (r >= 1 && r < size - 1) {
+            if (get(r - 1, c)?.type === type && get(r + 1, c)?.type === type) return true;
+        }
+        if (r < size - 2) {
+            if (get(r + 1, c)?.type === type && get(r + 2, c)?.type === type) return true;
+        }
+
+        return false;
     }
 
     showScreen(screen) {

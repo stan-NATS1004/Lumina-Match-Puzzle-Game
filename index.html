@@ -29,10 +29,7 @@
                 <span class="label">TARGET</span>
                 <span class="value" id="target-value">1000</span>
             </div>
-            <div class="hud-item moves-display">
-                <span class="label">MOVES</span>
-                <span class="value" id="moves-value">20</span>
-            </div>
+            <!-- Moves display removed as requested -->
         </header>
 
         <!-- Game Board -->
@@ -57,8 +54,9 @@
             <div class="rules-content" style="max-width: 80%; text-align: left; margin-bottom: 20px; line-height: 1.6;">
                 <p>1. <strong>スワップ</strong>: タイルをクリックして選択し、隣のタイルと入れ替えます。</p>
                 <p>2. <strong>マッチ</strong>: 同じ色のタイルを縦か横に3つ以上並べて消します。</p>
-                <p>3. <strong>スコア</strong>: タイルを消してスコアを稼ぎ、目標（TARGET）を達成してください。</p>
-                <p>4. <strong>ムーブ</strong>: 手数（MOVES）がなくなる前にクリアを目指しましょう！</p>
+                <p>3. <strong>コンボ</strong>: 連鎖で消すとスコア倍率アップ！一気に稼げます。</p>
+                <p>4. <strong>クリア条件</strong>: 目標スコア（TARGET）を達成すればクリア！</p>
+                <p>5. <strong>ゲームオーバー</strong>: 動かせるタイルがなくなると（手詰まり）終了です。</p>
             </div>
             <button id="close-rules-btn" class="btn primary">わかった！</button>
         </div>
@@ -81,7 +79,7 @@
 
         <div id="game-over-screen" class="overlay">
             <h2 class="title text-danger">GAME OVER</h2>
-            <p>Out of moves!</p>
+            <p>No more moves possible!</p>
             <button id="restart-btn" class="btn secondary">TRY AGAIN</button>
         </div>
 
